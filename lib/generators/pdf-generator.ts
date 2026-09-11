@@ -74,6 +74,10 @@ function sharedStyles(): string {
       border-collapse: collapse;
       margin: 0 0 12pt;
       page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    thead {
+      display: table-header-group;
     }
     th, td {
       border: 1px solid ${BRAND.colors.background};
@@ -96,6 +100,7 @@ function sharedStyles(): string {
       white-space: pre-wrap;
       word-break: break-word;
       page-break-inside: avoid;
+      break-inside: avoid;
     }
   `;
 }
