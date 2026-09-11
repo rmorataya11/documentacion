@@ -14,11 +14,13 @@ import {
   Paragraph,
   ShadingType,
   Table,
+  TableBorders,
   TableCell,
   TableLayoutType,
   TableRow,
   TextRun,
   VerticalAlignSection,
+  VerticalAlignTable,
   WidthType,
   type FileChild,
   type IBorderOptions,
@@ -303,6 +305,57 @@ function spacer(after = 200) {
 function buildCoverSection(data: ApiDocSchema) {
   const fullLogo = loadPng(BRAND.logos.full);
   const logoSize = scaleToWidth(fullLogo.size, 360);
+  const coverHeight = PAGE_HEIGHT - PAGE_MARGIN * 2 - 240;
+
+  const coverContent = [
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 400 },
+      children: [
+        imageRun(fullLogo.buffer, logoSize, {
+          id: "1",
+          name: "Logo Davivienda",
+          description: "Logo Davivienda",
+        }),
+      ],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 160 },
+      children: [
+        new TextRun({
+          text: data.title,
+          font: FONT,
+          size: 56,
+          bold: true,
+          color: hex(BRAND.colors.foreground),
+        }),
+      ],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 280 },
+      children: [
+        new TextRun({
+          text: data.subtitle,
+          font: FONT,
+          size: 32,
+          color: hex(BRAND.colors.foregroundStrong),
+        }),
+      ],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [
+        new TextRun({
+          text: data.version,
+          font: FONT,
+          size: 22,
+          color: hex(BRAND.colors.textMuted),
+        }),
+      ],
+    }),
+  ];
 
   return {
     properties: {
@@ -319,50 +372,28 @@ function buildCoverSection(data: ApiDocSchema) {
       },
     },
     children: [
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 400 },
-        children: [
-          imageRun(fullLogo.buffer, logoSize, {
-            id: "1",
-            name: "Logo Davivienda",
-            description: "Logo Davivienda",
-          }),
-        ],
-      }),
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 160 },
-        children: [
-          new TextRun({
-            text: data.title,
-            font: FONT,
-            size: 56,
-            bold: true,
-            color: hex(BRAND.colors.foreground),
-          }),
-        ],
-      }),
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 280 },
-        children: [
-          new TextRun({
-            text: data.subtitle,
-            font: FONT,
-            size: 32,
-            color: hex(BRAND.colors.foregroundStrong),
-          }),
-        ],
-      }),
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        children: [
-          new TextRun({
-            text: data.version,
-            font: FONT,
-            size: 22,
-            color: hex(BRAND.colors.textMuted),
+      new Table({
+        width: { size: CONTENT_WIDTH, type: WidthType.DXA },
+        columnWidths: [CONTENT_WIDTH],
+        layout: TableLayoutType.FIXED,
+        borders: TableBorders.NONE,
+        rows: [
+          new TableRow({
+            height: { value: coverHeight, rule: HeightRule.EXACT },
+            children: [
+              new TableCell({
+                width: { size: CONTENT_WIDTH, type: WidthType.DXA },
+                verticalAlign: VerticalAlignTable.CENTER,
+                borders: {
+                  top: noBorder,
+                  bottom: noBorder,
+                  left: noBorder,
+                  right: noBorder,
+                },
+                margins: { top: 0, bottom: 0, left: 0, right: 0 },
+                children: coverContent,
+              }),
+            ],
           }),
         ],
       }),
