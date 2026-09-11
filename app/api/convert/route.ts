@@ -127,6 +127,26 @@ function errorResponse(error: string, status: number) {
   return NextResponse.json({ error }, { status });
 }
 
+const GEMINI_RETRY_DELAYS_MS = [2000, 4000, 8000] as const;
+
+function isGeminiUnavailableError(error: unknown): boolean {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    error.status === 503
+  ) {
+    return true;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  return /\b503\b/.test(message) || /service unavailable/i.test(message);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function POST(request: Request) {
   let formData: FormData;
   try {
@@ -158,7 +178,7 @@ export async function POST(request: Request) {
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
-      model: "gemini-3.6-flash",
+      model: "gemini-2.5-flash",
       systemInstruction: SYSTEM_PROMPT,
       generationConfig: {
         responseMimeType: "application/json",
@@ -194,7 +214,7 @@ export async function POST(request: Request) {
       ];
     }
 
-    const result = await model.generateContent(parts);
+    const result = await generateContentWithRetry(model, parts);
     const text = result.response.text();
 
     let parsed: unknown;
@@ -218,10 +238,41 @@ export async function POST(request: Request) {
 
     return fileResponse(generated, outputFormat, parsed.title);
   } catch (caught) {
+    if (isGeminiUnavailableError(caught)) {
+      return errorResponse(
+        "El servicio de IA está temporalmente saturado, intenta de nuevo en unos minutos.",
+        500,
+      );
+    }
+
     const message =
       caught instanceof Error
         ? caught.message
         : "La conversión con Gemini falló.";
     return errorResponse(message, 500);
   }
+}
+
+async function generateContentWithRetry(
+  model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]>,
+  parts: Parameters<
+    ReturnType<GoogleGenerativeAI["getGenerativeModel"]>["generateContent"]
+  >[0],
+) {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= GEMINI_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await model.generateContent(parts);
+    } catch (error) {
+      lastError = error;
+      const hasRetriesLeft = attempt < GEMINI_RETRY_DELAYS_MS.length;
+      if (!isGeminiUnavailableError(error) || !hasRetriesLeft) {
+        throw error;
+      }
+      await sleep(GEMINI_RETRY_DELAYS_MS[attempt]);
+    }
+  }
+
+  throw lastError;
 }
