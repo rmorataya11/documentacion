@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "fs/promises";
+import { mkdirSync, writeFileSync } from "fs";
 import path from "path";
 import { generateWordDocument } from "../lib/generators/word-generator";
 import type { ApiDocSchema } from "../lib/types";
@@ -134,9 +134,9 @@ const sample: ApiDocSchema = {
 async function main() {
   const buffer = await generateWordDocument(sample);
   const outputPath = path.resolve("/tmp/test-output.docx");
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, buffer);
-  console.log(`Documento generado: ${outputPath}`);
+  mkdirSync(path.dirname(outputPath), { recursive: true });
+  writeFileSync(outputPath, buffer);
+  console.log(`Documento generado: ${outputPath} (${buffer.length} bytes)`);
 }
 
 main().catch((error) => {

@@ -1,4 +1,4 @@
-import { readFile } from "fs/promises";
+import { readFileSync } from "fs";
 import path from "path";
 import {
   AlignmentType,
@@ -74,8 +74,8 @@ function scaleToWidth(
 ) {
   const ratio = targetWidth / size.width;
   return {
-    width: Math.round(targetWidth),
-    height: Math.round(size.height * ratio),
+    width: Math.max(1, Math.round(targetWidth)),
+    height: Math.max(1, Math.round(size.height * ratio)),
   };
 }
 
@@ -85,14 +85,43 @@ function scaleToHeight(
 ) {
   const ratio = targetHeight / size.height;
   return {
-    width: Math.round(size.width * ratio),
-    height: Math.round(targetHeight),
+    width: Math.max(1, Math.round(size.width * ratio)),
+    height: Math.max(1, Math.round(targetHeight)),
   };
 }
 
-async function loadPng(publicPath: string) {
-  const buffer = await readFile(resolvePublicAsset(publicPath));
-  return { buffer, size: pngSize(buffer) };
+function loadPng(publicPath: string) {
+  const absolutePath = resolvePublicAsset(publicPath);
+  const buffer = readFileSync(absolutePath);
+
+  if (buffer.length < 24 || buffer.toString("ascii", 1, 4) !== "PNG") {
+    throw new Error(`No es un PNG válido: ${absolutePath}`);
+  }
+
+  const size = pngSize(buffer);
+  if (size.width < 1 || size.height < 1) {
+    throw new Error(`PNG sin dimensiones válidas: ${absolutePath}`);
+  }
+
+  return { buffer, size, absolutePath };
+}
+
+function imageRun(
+  buffer: Buffer,
+  transformation: { width: number; height: number },
+  alt: { id: string; name: string; description: string },
+) {
+  return new ImageRun({
+    type: "png",
+    data: Uint8Array.from(buffer),
+    transformation,
+    altText: {
+      id: alt.id,
+      name: alt.name,
+      title: alt.name,
+      description: alt.description,
+    },
+  });
 }
 
 function bodyText(text: string, options?: { after?: number; before?: number }) {
@@ -158,7 +187,6 @@ function codeBlock(content: string): Table {
             shading: {
               type: ShadingType.CLEAR,
               fill: hex(BRAND.colors.background),
-              color: "auto",
             },
             borders: {
               top: noBorder,
@@ -205,12 +233,10 @@ function tableCell(
       ? {
           type: ShadingType.CLEAR,
           fill: hex(BRAND.colors.surfaceDark),
-          color: "auto",
         }
       : {
           type: ShadingType.CLEAR,
           fill: hex(BRAND.colors.surface),
-          color: "auto",
         },
     borders: cellBorders,
     margins: { top: 60, bottom: 60, left: 80, right: 80 },
@@ -218,7 +244,7 @@ function tableCell(
       new Paragraph({
         children: [
           new TextRun({
-            text,
+            text: text.length > 0 ? text : "—",
             font: FONT,
             size: 18,
             bold: Boolean(options.header),
@@ -233,6 +259,10 @@ function tableCell(
 }
 
 function createTable(headers: string[], rows: string[][]): Table {
+  if (headers.length === 0) {
+    throw new Error("No se puede crear una tabla sin encabezados.");
+  }
+
   const columnWidths = headers.map(() =>
     Math.floor(CONTENT_WIDTH / headers.length),
   );
@@ -266,12 +296,12 @@ function createTable(headers: string[], rows: string[][]): Table {
 function spacer(after = 200) {
   return new Paragraph({
     spacing: { after },
-    children: [],
+    children: [new TextRun({ text: " ", font: FONT, size: 2 })],
   });
 }
 
-async function buildCoverSection(data: ApiDocSchema) {
-  const fullLogo = await loadPng(BRAND.logos.full);
+function buildCoverSection(data: ApiDocSchema) {
+  const fullLogo = loadPng(BRAND.logos.full);
   const logoSize = scaleToWidth(fullLogo.size, 360);
 
   return {
@@ -293,14 +323,10 @@ async function buildCoverSection(data: ApiDocSchema) {
         alignment: AlignmentType.CENTER,
         spacing: { after: 400 },
         children: [
-          new ImageRun({
-            type: "png",
-            data: fullLogo.buffer,
-            transformation: logoSize,
-            altText: {
-              title: "Davivienda",
-              description: "Logo Davivienda",
-            },
+          imageRun(fullLogo.buffer, logoSize, {
+            id: "1",
+            name: "Logo Davivienda",
+            description: "Logo Davivienda",
           }),
         ],
       }),
@@ -344,8 +370,8 @@ async function buildCoverSection(data: ApiDocSchema) {
   };
 }
 
-async function buildContentHeader() {
-  const icon = await loadPng(BRAND.logos.icon);
+function buildContentHeader() {
+  const icon = loadPng(BRAND.logos.icon);
   const iconSize = scaleToHeight(icon.size, 28);
 
   return new Header({
@@ -354,14 +380,10 @@ async function buildContentHeader() {
         alignment: AlignmentType.LEFT,
         spacing: { after: 80 },
         children: [
-          new ImageRun({
-            type: "png",
-            data: icon.buffer,
-            transformation: iconSize,
-            altText: {
-              title: "Davivienda",
-              description: "Ícono Davivienda",
-            },
+          imageRun(icon.buffer, iconSize, {
+            id: "2",
+            name: "Icono Davivienda",
+            description: "Icono Davivienda",
           }),
         ],
       }),
@@ -375,7 +397,7 @@ async function buildContentHeader() {
           },
         },
         spacing: { after: 0 },
-        children: [new TextRun("")],
+        children: [new TextRun({ text: " ", font: FONT, size: 2 })],
       }),
     ],
   });
@@ -496,11 +518,39 @@ function buildEndpointChildren(
   return children;
 }
 
+async function fixWordCompatibility(buffer: Buffer): Promise<Buffer> {
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(buffer);
+
+  for (const [name, file] of Object.entries(zip.files)) {
+    if (file.dir || !name.endsWith(".rels")) continue;
+
+    const rels = await file.async("string");
+    if (!rels.includes('Id="rId0"')) continue;
+
+    zip.file(name, rels.split('Id="rId0"').join('Id="rId1"'));
+
+    const partName = name.replace("_rels/", "").replace(".rels", "");
+    const part = zip.file(partName);
+    if (!part) continue;
+
+    const xml = await part.async("string");
+    zip.file(partName, xml.split('r:embed="rId0"').join('r:embed="rId1"'));
+  }
+
+  return Buffer.from(
+    await zip.generateAsync({
+      type: "nodebuffer",
+      compression: "DEFLATE",
+    }),
+  );
+}
+
 export async function generateWordDocument(
   data: ApiDocSchema,
 ): Promise<Buffer> {
-  const cover = await buildCoverSection(data);
-  const header = await buildContentHeader();
+  const cover = buildCoverSection(data);
+  const header = buildContentHeader();
   const contentChildren: FileChild[] = [
     heading1("Overview"),
     bodyText(data.overview),
@@ -569,5 +619,6 @@ export async function generateWordDocument(
     ],
   });
 
-  return Packer.toBuffer(document);
+  const packed = await Packer.toBuffer(document);
+  return fixWordCompatibility(packed);
 }
