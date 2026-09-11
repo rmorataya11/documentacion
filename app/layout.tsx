@@ -14,7 +14,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Conversor de Documentación API",
-  description: "Convierte documentación a formato API",
+  description:
+    "Convierte tu documentación técnica al formato estándar de Davivienda, en Word o PDF",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -23,7 +24,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex min-h-full flex-col bg-surface-dark text-foreground">
+        {children}
+      </body>
     </html>
   );
 }
