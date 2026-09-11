@@ -16,6 +16,11 @@ export const metadata: Metadata = {
   title: "Conversor de Documentación API",
   description:
     "Convierte tu documentación técnica al formato estándar de Davivienda, en Word o PDF",
+  icons: {
+    icon: [{ url: "/icon/freir.png", type: "image/png" }],
+    shortcut: "/icon/freir.png",
+    apple: "/icon/freir.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
