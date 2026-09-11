@@ -1,10 +1,12 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import mammoth from "mammoth";
 import { NextResponse } from "next/server";
+import { generatePdfDocument } from "@/lib/generators/pdf-generator";
+import { generateWordDocument } from "@/lib/generators/word-generator";
 import type { ApiDocSchema } from "@/lib/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const SYSTEM_PROMPT = `Eres un asistente que extrae y estructura documentación técnica de APIs. Extrae la información del documento y organízala siguiendo exactamente esta estructura: overview general del API, nota de formato estándar de errores si existe, y luego cada endpoint en el orden en que aparecen en el documento original, incluyendo para cada uno: número de sección, título, método HTTP, ruta, descripción, headers requeridos, parámetros de path, parámetros de query, ejemplo de request body si aplica, respuesta con status code y ejemplo, campos de la respuesta, y errores posibles. Si una sección opcional no está presente en el documento, omítela o déjala como array vacío — no inventes contenido que no esté en el documento original. Devuelve únicamente el JSON, sin texto adicional ni explicaciones.
 
@@ -34,6 +36,38 @@ El JSON debe seguir exactamente esta forma:
 }`;
 
 type FileKind = "pdf" | "docx";
+type OutputFormat = "docx" | "pdf";
+
+function getOutputFormat(value: FormDataEntryValue | null): OutputFormat | null {
+  return value === "docx" || value === "pdf" ? value : null;
+}
+
+function sanitizeFilename(title: string): string {
+  const cleaned = title
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+
+  return cleaned.length > 0 ? cleaned : "documentacion-api";
+}
+
+function fileResponse(buffer: Buffer, format: OutputFormat, title: string) {
+  const filename = `${sanitizeFilename(title)}.${format}`;
+  const contentType =
+    format === "pdf"
+      ? "application/pdf"
+      : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+  return new NextResponse(new Uint8Array(buffer), {
+    status: 200,
+    headers: {
+      "Content-Type": contentType,
+      "Content-Disposition": `attachment; filename="${filename}"`,
+    },
+  });
+}
 
 function getFileKind(file: File): FileKind | null {
   const name = file.name.toLowerCase();
@@ -94,11 +128,6 @@ function errorResponse(error: string, status: number) {
 }
 
 export async function POST(request: Request) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return errorResponse("Falta la variable de entorno GEMINI_API_KEY.", 500);
-  }
-
   let formData: FormData;
   try {
     formData = await request.formData();
@@ -114,6 +143,16 @@ export async function POST(request: Request) {
   const kind = getFileKind(file);
   if (!kind) {
     return errorResponse("El archivo debe ser .pdf o .docx.", 400);
+  }
+
+  const outputFormat = getOutputFormat(formData.get("outputFormat"));
+  if (!outputFormat) {
+    return errorResponse('El formato de salida debe ser "docx" o "pdf".', 400);
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return errorResponse("Falta la variable de entorno GEMINI_API_KEY.", 500);
   }
 
   try {
@@ -172,7 +211,12 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ data: parsed });
+    const generated =
+      outputFormat === "pdf"
+        ? await generatePdfDocument(parsed)
+        : await generateWordDocument(parsed);
+
+    return fileResponse(generated, outputFormat, parsed.title);
   } catch (caught) {
     const message =
       caught instanceof Error

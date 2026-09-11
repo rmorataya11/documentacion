@@ -1,41 +1,41 @@
 "use client";
 
 import { useRef, useState, type DragEvent, type ChangeEvent } from "react";
-import ReactMarkdown from "react-markdown";
 
 type FileKind = "pdf" | "docx";
+type OutputFormat = "docx" | "pdf";
 
 const ACCEPTED_EXTENSIONS = [".pdf", ".docx"] as const;
-
-const SAMPLE_MARKDOWN = `# Documentación de ejemplo
-
-## GET /users
-
-Obtiene la lista de usuarios registrados.
-
-### Parámetros de consulta
-
-- \`limit\` (number): máximo de resultados a devolver
-- \`offset\` (number): desplazamiento para paginación
-
-### Respuesta
-
-\`\`\`json
-{
-  "users": [
-    { "id": 1, "name": "Ada Lovelace" }
-  ]
-}
-\`\`\`
-
-> Este markdown es un resultado de ejemplo. La conversión real se conectará más adelante.
-`;
 
 function getFileKind(fileName: string): FileKind | null {
   const lower = fileName.toLowerCase();
   if (lower.endsWith(".pdf")) return "pdf";
   if (lower.endsWith(".docx")) return "docx";
   return null;
+}
+
+function filenameFromDisposition(
+  header: string | null,
+  fallback: string,
+): string {
+  if (!header) return fallback;
+
+  const utf8Name = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Name?.[1]) {
+    try {
+      return decodeURIComponent(utf8Name[1]);
+    } catch {
+      // Usa el fallback de filename= si el encoding falla.
+    }
+  }
+
+  const quoted = header.match(/filename="([^"]+)"/i);
+  if (quoted?.[1]) return quoted[1];
+
+  const plain = header.match(/filename=([^;]+)/i);
+  if (plain?.[1]) return plain[1].trim().replaceAll('"', "");
+
+  return fallback;
 }
 
 function PdfIcon() {
@@ -89,18 +89,25 @@ function Spinner() {
   );
 }
 
-async function convertPlaceholder(_file: File): Promise<string> {
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-  return SAMPLE_MARKDOWN;
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export default function FileDropzone() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [fileKind, setFileKind] = useState<FileKind | null>(null);
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>("docx");
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function applyFile(selected: File) {
@@ -108,7 +115,7 @@ export default function FileDropzone() {
     if (!kind) {
       setFile(null);
       setFileKind(null);
-      setResult(null);
+      setSuccess(null);
       setError(
         `Archivo no válido. Solo se aceptan ${ACCEPTED_EXTENSIONS.join(" y ")}.`,
       );
@@ -117,7 +124,7 @@ export default function FileDropzone() {
 
     setFile(selected);
     setFileKind(kind);
-    setResult(null);
+    setSuccess(null);
     setError(null);
   }
 
@@ -150,11 +157,45 @@ export default function FileDropzone() {
 
     setLoading(true);
     setError(null);
-    setResult(null);
+    setSuccess(null);
 
     try {
-      const markdown = await convertPlaceholder(file);
-      setResult(markdown);
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("outputFormat", outputFormat);
+
+      const response = await fetch("/api/convert", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let message = "La conversión falló. Inténtalo de nuevo.";
+        try {
+          const payload: unknown = await response.json();
+          if (
+            payload &&
+            typeof payload === "object" &&
+            "error" in payload &&
+            typeof payload.error === "string"
+          ) {
+            message = payload.error;
+          }
+        } catch {
+          // Conserva el mensaje genérico si el cuerpo no es JSON.
+        }
+        setError(message);
+        return;
+      }
+
+      const blob = await response.blob();
+      const fallback = `documentacion-api.${outputFormat}`;
+      const filename = filenameFromDisposition(
+        response.headers.get("Content-Disposition"),
+        fallback,
+      );
+      downloadBlob(blob, filename);
+      setSuccess("Documento generado y descargado correctamente");
     } catch (caught) {
       const message =
         caught instanceof Error
@@ -215,6 +256,50 @@ export default function FileDropzone() {
         )}
       </button>
 
+      {file ? (
+        <fieldset className="w-full">
+          <legend className="mb-2 text-center text-sm font-medium text-zinc-700 dark:text-zinc-200">
+            Formato de salida
+          </legend>
+          <div className="grid grid-cols-2 gap-3">
+            <label
+              className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+                outputFormat === "docx"
+                  ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+                  : "border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+              }`}
+            >
+              <input
+                type="radio"
+                name="outputFormat"
+                value="docx"
+                checked={outputFormat === "docx"}
+                onChange={() => setOutputFormat("docx")}
+                className="sr-only"
+              />
+              Word
+            </label>
+            <label
+              className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+                outputFormat === "pdf"
+                  ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+                  : "border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+              }`}
+            >
+              <input
+                type="radio"
+                name="outputFormat"
+                value="pdf"
+                checked={outputFormat === "pdf"}
+                onChange={() => setOutputFormat("pdf")}
+                className="sr-only"
+              />
+              PDF
+            </label>
+          </div>
+        </fieldset>
+      ) : null}
+
       <button
         type="button"
         onClick={handleConvert}
@@ -240,10 +325,13 @@ export default function FileDropzone() {
         </p>
       ) : null}
 
-      {result ? (
-        <article className="markdown-result w-full rounded-xl border border-zinc-200 bg-white px-6 py-5 text-left dark:border-zinc-800 dark:bg-zinc-950">
-          <ReactMarkdown>{result}</ReactMarkdown>
-        </article>
+      {success ? (
+        <p
+          role="status"
+          className="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300"
+        >
+          {success}
+        </p>
       ) : null}
     </div>
   );
