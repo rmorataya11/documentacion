@@ -73,6 +73,18 @@ function sharedStyles(): string {
       padding-left: 18pt;
     }
     li { margin: 0 0 4pt; }
+    .verdict {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 10pt;
+      margin: 0 0 8pt;
+    }
+    .verdict-cumple { background: #2ecc71; }
+    .verdict-parcial { background: #c4a035; }
+    .verdict-no_cumple { background: ${BRAND.colors.accent}; }
     .endpoint-line {
       font-family: ${MONO_FONT}, monospace;
       font-size: 11pt;
@@ -306,6 +318,20 @@ function buildContentHtml(data: ApiDocSchema): string {
     `
     : "";
 
+  const naming = data.namingConventionReview
+    ? `
+      <h1>Revisión de Nomenclatura (BIAN / ISO 20022)</h1>
+      <p class="verdict verdict-${data.namingConventionReview.overallAssessment}">${
+        data.namingConventionReview.overallAssessment === "cumple"
+          ? "Cumple"
+          : data.namingConventionReview.overallAssessment === "parcial"
+            ? "Parcial"
+            : "No cumple"
+      }</p>
+      <p>${escapeHtml(data.namingConventionReview.summary)}</p>
+    `
+    : "";
+
   const errorNote = data.errorFormatNote
     ? `
       <h2>Formato Estándar de Errores</h2>
@@ -331,6 +357,7 @@ function buildContentHtml(data: ApiDocSchema): string {
     <p>${escapeHtml(data.overview)}</p>
     ${capabilities}
     ${security}
+    ${naming}
     ${errorNote}
     ${endpoints}
   </div>

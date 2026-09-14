@@ -9,6 +9,10 @@ export interface ApiDocSchema {
     description: string;
   };
   errorFormatNote?: { description: string; example: string };
+  namingConventionReview?: {
+    overallAssessment: "cumple" | "parcial" | "no_cumple";
+    summary: string;
+  };
   endpoints: {
     sectionNumber: string;
     title: string;

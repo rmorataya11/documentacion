@@ -241,6 +241,72 @@ function bulletItem(text: string) {
   });
 }
 
+const VERDICT_SUCCESS = "2ECC71";
+const VERDICT_PARTIAL = "C4A035";
+
+function verdictMeta(assessment: "cumple" | "parcial" | "no_cumple") {
+  if (assessment === "cumple") {
+    return { fill: VERDICT_SUCCESS, label: "Cumple" };
+  }
+  if (assessment === "parcial") {
+    return { fill: VERDICT_PARTIAL, label: "Parcial" };
+  }
+  return { fill: hex(BRAND.colors.accent), label: "No cumple" };
+}
+
+function namingReviewChildren(
+  review: NonNullable<ApiDocSchema["namingConventionReview"]>,
+): FileChild[] {
+  const verdict = verdictMeta(review.overallAssessment);
+  return [
+    heading1("Revisión de Nomenclatura (BIAN / ISO 20022)"),
+    new Table({
+      width: { size: convertMillimetersToTwip(42), type: WidthType.DXA },
+      layout: TableLayoutType.FIXED,
+      columnWidths: [convertMillimetersToTwip(42)],
+      rows: [
+        new TableRow({
+          children: [
+            new TableCell({
+              width: {
+                size: convertMillimetersToTwip(42),
+                type: WidthType.DXA,
+              },
+              shading: {
+                type: ShadingType.CLEAR,
+                fill: verdict.fill,
+              },
+              borders: {
+                top: noBorder,
+                bottom: noBorder,
+                left: noBorder,
+                right: noBorder,
+              },
+              margins: { top: 60, bottom: 60, left: 100, right: 100 },
+              children: [
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  children: [
+                    new TextRun({
+                      text: verdict.label,
+                      font: FONT,
+                      size: 20,
+                      bold: true,
+                      color: "FFFFFF",
+                    }),
+                  ],
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    }),
+    spacer(120),
+    bodyText(review.summary),
+  ];
+}
+
 function tableCell(
   text: string,
   options: {
@@ -639,6 +705,10 @@ export async function generateWordDocument(
         ],
       }),
     );
+  }
+
+  if (data.namingConventionReview) {
+    contentChildren.push(...namingReviewChildren(data.namingConventionReview));
   }
 
   if (data.errorFormatNote) {

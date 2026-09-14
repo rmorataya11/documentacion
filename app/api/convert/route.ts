@@ -16,6 +16,11 @@ Reglas para campos nuevos:
 - constraint: si la descripción original de un path param, query param o campo de respuesta menciona una restricción de longitud, formato o rango (ej: "máximo 50 caracteres", "formato yyyy-MM-dd", "entre 1 y 100"), extráela por separado en "constraint" y no la dejes solo mezclada en "description". Si no hay restricción mencionada, omite "constraint".
 - No inventes información de seguridad, capacidades o restricciones que no estén presentes en el documento original — si no se menciona, omite el campo.
 
+Revisión de nomenclatura (después de extraer todos los endpoints y sus campos pathParams, queryParams, requestHeaders y responseFields):
+- Evalúa si los nombres de esos campos siguen las convenciones de nomenclatura de los estándares BIAN e ISO 20022 (por ejemplo: camelCase versus los estilos típicos de estos estándares, uso de términos estandarizados como "Dbtr", "Cdtr", abreviaciones ISO 20022, dominios de servicio BIAN, etc.).
+- Esta evaluación es sobre convención de nombres (naming), no sobre la lógica de negocio del API. Determina un veredicto general (cumple/parcial/no_cumple) y escribe un resumen breve de 2-3 oraciones explicando por qué. Si hay un patrón relevante (por ejemplo, camelCase genérico en lugar de abreviaciones ISO), menciónalo de forma narrativa dentro del resumen; no generes una lista estructurada de campos ni sugerencias de corrección por campo.
+- Si no tienes suficiente certeza para evaluar esto con los datos disponibles, indica "parcial" con una nota explicando la incertidumbre, en vez de forzar un veredicto categórico.
+
 El JSON debe seguir exactamente esta forma:
 {
   "title": string,
@@ -25,6 +30,10 @@ El JSON debe seguir exactamente esta forma:
   "capabilities": [string],
   "security": { "mechanism": string, "description": string },
   "errorFormatNote": { "description": string, "example": string },
+  "namingConventionReview": {
+    "overallAssessment": "cumple" | "parcial" | "no_cumple",
+    "summary": string
+  },
   "endpoints": [
     {
       "sectionNumber": string,
@@ -114,6 +123,18 @@ function isApiDocSchema(value: unknown): value is ApiDocSchema {
     ) {
       return false;
     }
+  }
+  if (value.namingConventionReview !== undefined) {
+    if (!isRecord(value.namingConventionReview)) return false;
+    const assessment = value.namingConventionReview.overallAssessment;
+    if (
+      assessment !== "cumple" &&
+      assessment !== "parcial" &&
+      assessment !== "no_cumple"
+    ) {
+      return false;
+    }
+    if (typeof value.namingConventionReview.summary !== "string") return false;
   }
   if (!Array.isArray(value.endpoints)) return false;
 
