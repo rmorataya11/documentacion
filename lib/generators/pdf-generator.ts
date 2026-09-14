@@ -34,6 +34,10 @@ function requiredLabel(required: boolean): string {
   return required ? "Sí" : "No";
 }
 
+function constraintLabel(constraint?: string): string {
+  return constraint?.trim() ?? "";
+}
+
 function sharedStyles(): string {
   return `
     * { box-sizing: border-box; }
@@ -64,6 +68,11 @@ function sharedStyles(): string {
       page-break-after: avoid;
     }
     p { margin: 0 0 8pt; }
+    ul {
+      margin: 0 0 8pt;
+      padding-left: 18pt;
+    }
+    li { margin: 0 0 4pt; }
     .endpoint-line {
       font-family: ${MONO_FONT}, monospace;
       font-size: 11pt;
@@ -147,11 +156,12 @@ function renderEndpoint(
     parts.push("<h2>Path Parameters</h2>");
     parts.push(
       renderTable(
-        ["Parámetro", "Tipo", "Requerido", "Descripción"],
+        ["Parámetro", "Tipo", "Requerido", "Restricción", "Descripción"],
         endpoint.pathParams.map((param) => [
           param.name,
           param.type,
           requiredLabel(param.required),
+          constraintLabel(param.constraint),
           param.description,
         ]),
       ),
@@ -162,11 +172,12 @@ function renderEndpoint(
     parts.push("<h2>Query Parameters</h2>");
     parts.push(
       renderTable(
-        ["Parámetro", "Tipo", "Requerido", "Descripción"],
+        ["Parámetro", "Tipo", "Requerido", "Restricción", "Descripción"],
         endpoint.queryParams.map((param) => [
           param.name,
           param.type,
           requiredLabel(param.required),
+          constraintLabel(param.constraint),
           param.description,
         ]),
       ),
@@ -186,10 +197,11 @@ function renderEndpoint(
     parts.push("<h2>Response Fields</h2>");
     parts.push(
       renderTable(
-        ["Campo", "Tipo", "Descripción"],
+        ["Campo", "Tipo", "Restricción", "Descripción"],
         endpoint.responseFields.map((field) => [
           field.name,
           field.type,
+          constraintLabel(field.constraint),
           field.description,
         ]),
       ),
@@ -275,6 +287,25 @@ function buildCoverHtml(data: ApiDocSchema, logoFullUri: string): string {
 }
 
 function buildContentHtml(data: ApiDocSchema): string {
+  const capabilities =
+    data.capabilities && data.capabilities.length > 0
+      ? `
+      <h1>Capacidades</h1>
+      <ul>
+        ${data.capabilities
+          .map((capability) => `<li>${escapeHtml(capability)}</li>`)
+          .join("")}
+      </ul>
+    `
+      : "";
+
+  const security = data.security
+    ? `
+      <h1>Seguridad</h1>
+      <p><strong>${escapeHtml(data.security.mechanism)}</strong> ${escapeHtml(data.security.description)}</p>
+    `
+    : "";
+
   const errorNote = data.errorFormatNote
     ? `
       <h2>Formato Estándar de Errores</h2>
@@ -298,6 +329,8 @@ function buildContentHtml(data: ApiDocSchema): string {
   <div class="content">
     <h1>Overview</h1>
     <p>${escapeHtml(data.overview)}</p>
+    ${capabilities}
+    ${security}
     ${errorNote}
     ${endpoints}
   </div>

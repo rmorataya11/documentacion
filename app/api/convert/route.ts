@@ -8,7 +8,13 @@ import type { ApiDocSchema } from "@/lib/types";
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-const SYSTEM_PROMPT = `Eres un asistente que extrae y estructura documentación técnica de APIs. Extrae la información del documento y organízala siguiendo exactamente esta estructura: overview general del API, nota de formato estándar de errores si existe, y luego cada endpoint en el orden en que aparecen en el documento original, incluyendo para cada uno: número de sección, título, método HTTP, ruta, descripción, headers requeridos, parámetros de path, parámetros de query, ejemplo de request body si aplica, respuesta con status code y ejemplo, campos de la respuesta, y errores posibles. Si una sección opcional no está presente en el documento, omítela o déjala como array vacío — no inventes contenido que no esté en el documento original. Devuelve únicamente el JSON, sin texto adicional ni explicaciones.
+const SYSTEM_PROMPT = `Eres un asistente que extrae y estructura documentación técnica de APIs. Extrae la información del documento y organízala siguiendo exactamente esta estructura: overview general del API; capacidades/funcionalidades principales si el documento las lista (viñetas o una sección separada del overview); mecanismo de seguridad/autenticación si se menciona; nota de formato estándar de errores si existe; y luego cada endpoint en el orden en que aparecen en el documento original, incluyendo para cada uno: número de sección, título, método HTTP, ruta, descripción, headers requeridos, parámetros de path, parámetros de query, ejemplo de request body si aplica, respuesta con status code y ejemplo, campos de la respuesta, y errores posibles. Si una sección opcional no está presente en el documento, omítela o déjala como array vacío — no inventes contenido que no esté en el documento original. Devuelve únicamente el JSON, sin texto adicional ni explicaciones.
+
+Reglas para campos nuevos:
+- capabilities: si el documento describe una lista de funcionalidades o capacidades del API, extráelas como array de strings. Si no hay una sección así, omite el campo o déjalo como array vacío.
+- security: si el documento menciona el mecanismo de autenticación/seguridad (headers de autorización, tipo de token, mTLS, API keys, OAuth, etc.), extrae "mechanism" (nombre corto) y "description" (cómo funciona). Si no se menciona explícitamente, omite el campo.
+- constraint: si la descripción original de un path param, query param o campo de respuesta menciona una restricción de longitud, formato o rango (ej: "máximo 50 caracteres", "formato yyyy-MM-dd", "entre 1 y 100"), extráela por separado en "constraint" y no la dejes solo mezclada en "description". Si no hay restricción mencionada, omite "constraint".
+- No inventes información de seguridad, capacidades o restricciones que no estén presentes en el documento original — si no se menciona, omite el campo.
 
 El JSON debe seguir exactamente esta forma:
 {
@@ -16,6 +22,8 @@ El JSON debe seguir exactamente esta forma:
   "subtitle": string,
   "version": string,
   "overview": string,
+  "capabilities": [string],
+  "security": { "mechanism": string, "description": string },
   "errorFormatNote": { "description": string, "example": string },
   "endpoints": [
     {
@@ -25,11 +33,11 @@ El JSON debe seguir exactamente esta forma:
       "path": string,
       "description": string,
       "requestHeaders": [{ "name": string, "required": boolean, "description": string }],
-      "pathParams": [{ "name": string, "type": string, "required": boolean, "description": string }],
-      "queryParams": [{ "name": string, "type": string, "required": boolean, "description": string }],
+      "pathParams": [{ "name": string, "type": string, "required": boolean, "constraint": string, "description": string }],
+      "queryParams": [{ "name": string, "type": string, "required": boolean, "constraint": string, "description": string }],
       "requestBodyExample": string,
       "response": { "statusCode": string, "example": string },
-      "responseFields": [{ "name": string, "type": string, "description": string }],
+      "responseFields": [{ "name": string, "type": string, "constraint": string, "description": string }],
       "errors": [{ "code": string, "description": string, "body": string }]
     }
   ]
@@ -95,6 +103,18 @@ function isApiDocSchema(value: unknown): value is ApiDocSchema {
   if (typeof value.subtitle !== "string") return false;
   if (typeof value.version !== "string") return false;
   if (typeof value.overview !== "string") return false;
+  if (value.capabilities !== undefined && !Array.isArray(value.capabilities)) {
+    return false;
+  }
+  if (value.security !== undefined) {
+    if (
+      !isRecord(value.security) ||
+      typeof value.security.mechanism !== "string" ||
+      typeof value.security.description !== "string"
+    ) {
+      return false;
+    }
+  }
   if (!Array.isArray(value.endpoints)) return false;
 
   return value.endpoints.every((endpoint) => {

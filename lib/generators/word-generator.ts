@@ -222,6 +222,25 @@ function requiredLabel(required: boolean): string {
   return required ? "Sí" : "No";
 }
 
+function constraintLabel(constraint?: string): string {
+  return constraint?.trim() ?? "";
+}
+
+function bulletItem(text: string) {
+  return new Paragraph({
+    bullet: { level: 0 },
+    spacing: { after: 80 },
+    children: [
+      new TextRun({
+        text,
+        font: FONT,
+        size: 22,
+        color: hex(BRAND.colors.foreground),
+      }),
+    ],
+  });
+}
+
 function tableCell(
   text: string,
   options: {
@@ -472,11 +491,12 @@ function buildEndpointChildren(
     children.push(heading2("Path Parameters"));
     children.push(
       createTable(
-        ["Parámetro", "Tipo", "Requerido", "Descripción"],
+        ["Parámetro", "Tipo", "Requerido", "Restricción", "Descripción"],
         endpoint.pathParams.map((param) => [
           param.name,
           param.type,
           requiredLabel(param.required),
+          constraintLabel(param.constraint),
           param.description,
         ]),
       ),
@@ -488,11 +508,12 @@ function buildEndpointChildren(
     children.push(heading2("Query Parameters"));
     children.push(
       createTable(
-        ["Parámetro", "Tipo", "Requerido", "Descripción"],
+        ["Parámetro", "Tipo", "Requerido", "Restricción", "Descripción"],
         endpoint.queryParams.map((param) => [
           param.name,
           param.type,
           requiredLabel(param.required),
+          constraintLabel(param.constraint),
           param.description,
         ]),
       ),
@@ -515,10 +536,11 @@ function buildEndpointChildren(
     children.push(heading2("Response Fields"));
     children.push(
       createTable(
-        ["Campo", "Tipo", "Descripción"],
+        ["Campo", "Tipo", "Restricción", "Descripción"],
         endpoint.responseFields.map((field) => [
           field.name,
           field.type,
+          constraintLabel(field.constraint),
           field.description,
         ]),
       ),
@@ -586,6 +608,38 @@ export async function generateWordDocument(
     heading1("Overview"),
     bodyText(data.overview),
   ];
+
+  if (data.capabilities && data.capabilities.length > 0) {
+    contentChildren.push(heading1("Capacidades"));
+    contentChildren.push(
+      ...data.capabilities.map((capability) => bulletItem(capability)),
+    );
+    contentChildren.push(spacer(80));
+  }
+
+  if (data.security) {
+    contentChildren.push(heading1("Seguridad"));
+    contentChildren.push(
+      new Paragraph({
+        spacing: { after: 160 },
+        children: [
+          new TextRun({
+            text: data.security.mechanism,
+            font: FONT,
+            size: 22,
+            bold: true,
+            color: hex(BRAND.colors.foreground),
+          }),
+          new TextRun({
+            text: ` ${data.security.description}`,
+            font: FONT,
+            size: 22,
+            color: hex(BRAND.colors.foreground),
+          }),
+        ],
+      }),
+    );
+  }
 
   if (data.errorFormatNote) {
     contentChildren.push(heading2("Formato Estándar de Errores"));
